@@ -27,6 +27,14 @@
 }
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
 html,body{margin:0;padding:0;}
+html{height:100%;}
+body{min-height:100%;}
+/* When launched as an installed app (standalone), lock the viewport so it
+   feels native: no rubber-band scroll, fixed to the screen. */
+@media (display-mode:standalone){
+  html,body{height:100%;overflow:hidden;position:fixed;width:100%;overscroll-behavior:none;}
+  #app{height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
+}
 body{
   font-family:-apple-system,'Segoe UI',system-ui,Roboto,'Helvetica Neue',Arial,sans-serif;
   background:linear-gradient(168deg,var(--bg1) 0%,#403bb5 46%,var(--bg2) 100%);
@@ -339,7 +347,7 @@ textarea{resize:vertical;font-size:13.5px;line-height:1.5;font-variant-ligatures
       <label class="f" style="margin-top:18px">VEYA ODA KODUYLA KATIL</label>
       <input type="text" id="onCode" maxlength="5" placeholder="Örn: KTP42" autocapitalize="characters" style="text-transform:uppercase;letter-spacing:4px;text-align:center;font-weight:900;font-size:20px">
       <button class="btn gray" id="btnJoin">Odaya Katıl</button>
-      <p class="note">Oda verileri, bu uygulama bağlantısına sahip herkesin erişebildiği ortak alanda saklanır — arkadaş arası keyif oyunları için tasarlandı.</p>
+      <p class="note">Oda kodunu bilen herkes odaya katılabilir — arkadaş arası keyif oyunları için tasarlandı.</p>
     </div>
   </section>
 
@@ -375,6 +383,7 @@ textarea{resize:vertical;font-size:13.5px;line-height:1.5;font-variant-ligatures
   <section class="screen" id="scr-profile">
     <div class="tinybar"><button class="back" data-go="scr-home">‹ Geri</button></div>
     <h2 class="scr">Profil</h2>
+    <div class="card" id="accCard" style="display:none"></div>
     <div class="card">
       <div id="avPrev" style="display:flex;justify-content:center;margin:4px 0 10px"></div>
       <label class="f">ADIN</label>
@@ -53603,6 +53612,165 @@ async function stDel(key,shared){
   return false;
 }
 
+/* ================================================================
+   FIREBASE (online backend for the hosted version: GitHub Pages etc.)
+   Inside Claude artifacts this is skipped and the built-in shared
+   storage keeps working as before.
+================================================================ */
+const FIREBASE_CONFIG={
+  apiKey:"AIzaSyB39FfyPyvMNjXcwTIiWwi-X_9TnO489Uk",
+  authDomain:"kelimeustasi-1ed61.firebaseapp.com",
+  projectId:"kelimeustasi-1ed61",
+  storageBucket:"kelimeustasi-1ed61.firebasestorage.app",
+  messagingSenderId:"828239130975",
+  appId:"1:828239130975:web:de5ce7c2fcb9c201c386ea"
+};
+const FB={ready:false,loading:false,auth:null,db:null,user:null,unsub:null};
+function fbScript(src){
+  return new Promise(function(res,rej){
+    const sc=document.createElement('script');
+    sc.src=src;sc.onload=res;sc.onerror=rej;
+    document.head.appendChild(sc);
+  });
+}
+async function loadFirebase(){
+  if(FB.ready||FB.loading)return FB.ready;
+  if(hasStore)return false; /* artifact environment keeps its own backend */
+  FB.loading=true;updateOnlineCard();
+  try{
+    const V='https://www.gstatic.com/firebasejs/10.14.1/';
+    await fbScript(V+'firebase-app-compat.js');
+    await Promise.all([fbScript(V+'firebase-auth-compat.js'),fbScript(V+'firebase-firestore-compat.js')]);
+    firebase.initializeApp(FIREBASE_CONFIG);
+    FB.auth=firebase.auth();
+    FB.db=firebase.firestore();
+    FB.ready=true;
+    FB.auth.onAuthStateChanged(onAuthChange);
+    try{await FB.auth.getRedirectResult();}catch(e){}
+    if(!FB.auth.currentUser){try{await FB.auth.signInAnonymously();}catch(e){}}
+  }catch(e){FB.ready=false;}
+  FB.loading=false;
+  updateOnlineCard();
+  return FB.ready;
+}
+function isGoogleUser(){return !!(FB.user&&!FB.user.isAnonymous);}
+function netMode(){return hasStore?'store':(FB.ready?'fb':null);}
+function updateOnlineCard(){
+  const el=$('mOnline');if(!el)return;
+  const sp=el.querySelector('span');
+  if(hasStore){el.classList.remove('dis');sp.textContent='Oda kur, kodu paylaş; 4 kişiye kadar internetten oynayın';return;}
+  if(FB.ready){el.classList.remove('dis');sp.textContent='Anlık senkron · Oda kur, kodu paylaş (2–4 kişi)';return;}
+  el.classList.add('dis');
+  sp.textContent=FB.loading?'Bağlanıyor…':'Bu ortamda kullanılamıyor';
+}
+/* ---- room transport: Firestore when hosted, shared storage in artifacts ---- */
+async function roomGet(code){
+  if(netMode()==='fb'){
+    try{const d=await FB.db.collection('oda').doc(code).get();return d.exists?d.data().j:null;}catch(e){return null;}
+  }
+  return stGet('oda:'+code,true);
+}
+async function roomSet(code,json,seq){
+  if(netMode()==='fb'){
+    try{await FB.db.collection('oda').doc(code).set({j:json,seq:seq||0,ts:Date.now()});return true;}catch(e){return false;}
+  }
+  return stSet('oda:'+code,json,true);
+}
+async function roomDel(code){
+  if(netMode()==='fb'){
+    try{await FB.db.collection('oda').doc(code).delete();return true;}catch(e){return false;}
+  }
+  return stDel('oda:'+code,true);
+}
+/* ---- account / cloud profile sync ---- */
+function onAuthChange(user){
+  FB.user=user||null;
+  renderAccount();
+  if(isGoogleUser())cloudLoadProfile();
+}
+let cloudTimer=null;
+function cloudSaveSoon(){
+  if(!FB.ready||!isGoogleUser())return;
+  clearTimeout(cloudTimer);
+  cloudTimer=setTimeout(cloudSaveNow,1500);
+}
+async function cloudSaveNow(){
+  if(!FB.ready||!isGoogleUser())return;
+  try{
+    await FB.db.collection('users').doc(FB.user.uid).set({
+      name:ME.name||'',av:ME.av||null,stats:ME.stats||{},lastStat:ME.lastStat||'',
+      tok:{t:TOK.t,tier:TOK.tier,next:TOK.next,dLast:TOK.dLast,dStreak:TOK.dStreak},
+      ts:Date.now()
+    },{merge:true});
+  }catch(e){}
+}
+async function cloudLoadProfile(){
+  if(!FB.ready||!isGoogleUser())return;
+  try{
+    if((!G||G.mode!=='online')&&ME.id!=='u_'+FB.user.uid){ME.id='u_'+FB.user.uid;}
+    const d=await FB.db.collection('users').doc(FB.user.uid).get();
+    if(d.exists){
+      const o=d.data();
+      if(o.name)ME.name=o.name;
+      if(o.av)ME.av=o.av;
+      if(o.stats)ME.stats=Object.assign(ME.stats||{},o.stats);
+      if(o.lastStat)ME.lastStat=o.lastStat;
+      if(o.tok){
+        if(o.tok.t!=null)TOK.t=o.tok.t;
+        TOK.tier=o.tok.tier||0;
+        if(o.tok.next)TOK.next=o.tok.next;
+        if(o.tok.dLast)TOK.dLast=o.tok.dLast;
+        if(o.tok.dStreak)TOK.dStreak=o.tok.dStreak;
+        stSet('ku_jeton',JSON.stringify(TOK),false);
+      }
+    }else{
+      if(!ME.name&&FB.user.displayName)ME.name=FB.user.displayName.split(' ')[0].slice(0,14);
+      if(!ME.av&&FB.user.photoURL)ME.av={t:'img',v:FB.user.photoURL,c:0};
+      cloudSaveNow();
+    }
+    saveProfile();
+    renderProfileBar();renderTok();renderDaily();
+    const scr=$('scr-profile');
+    if(scr&&scr.classList.contains('on')){renderAccount();renderStats();renderAvTabs();renderAvGrid();renderAvColors();renderAvPrev();}
+    toast('☁️ Profil senkronize edildi');
+  }catch(e){}
+}
+const G_LOGO='<svg width="20" height="20" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.3 6.1 29.4 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.6-.4-3.9z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.3 6.1 29.4 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.3 0-9.7-3.3-11.3-8l-6.5 5C9.6 39.6 16.3 44 24 44z"/><path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4.1 5.5l6.2 5.2C41 35.4 44 30.2 44 24c0-1.3-.1-2.6-.4-3.9z"/></svg>';
+function renderAccount(){
+  const c=$('accCard');if(!c)return;
+  if(!FB.ready){c.style.display='none';return;}
+  c.style.display='block';
+  if(isGoogleUser()){
+    const u=FB.user;
+    c.innerHTML='<div style="display:flex;align-items:center;gap:12px">'
+      +(u.photoURL?'<span class="avx" style="overflow:hidden"><img src="'+esc(u.photoURL)+'" style="width:100%;height:100%;object-fit:cover;border-radius:inherit" referrerpolicy="no-referrer"></span>':avHTML(null,u.displayName||'G',''))
+      +'<div class="mtxt"><b>'+esc(u.displayName||'Google hesabı')+'</b><span>'+esc(u.email||'')+' · ☁️ Senkron açık</span></div></div>'
+      +'<button class="btn gray" id="btnSignOut" style="margin-top:12px">Çıkış Yap</button>';
+    const b=$('btnSignOut');if(b)b.onclick=doSignOut;
+  }else{
+    c.innerHTML='<div class="mtxt" style="margin-bottom:10px"><b>Hesabınla oyna</b><span>Profilin, istatistiklerin ve jetonların tüm cihazlarında senkronize olsun.</span></div>'
+      +'<button class="btn" id="btnGoogle" style="background:#fff;color:#334155;box-shadow:0 5px 0 #cbd5e1,0 8px 16px rgba(20,30,50,.18);display:flex;align-items:center;justify-content:center;gap:10px">'+G_LOGO+'<span>Google ile Giriş Yap</span></button>';
+    const b=$('btnGoogle');if(b)b.onclick=doSignIn;
+  }
+}
+async function doSignIn(){
+  if(!FB.ready)return;
+  const prov=new firebase.auth.GoogleAuthProvider();
+  try{await FB.auth.signInWithPopup(prov);}
+  catch(e){
+    const c=(e&&e.code)||'';
+    if(c==='auth/popup-blocked'||c==='auth/cancelled-popup-request'||c==='auth/operation-not-supported-in-this-environment'){
+      try{await FB.auth.signInWithRedirect(prov);}catch(e2){toast('Giriş yapılamadı');}
+    }else if(c!=='auth/popup-closed-by-user'){toast('Giriş yapılamadı: '+c);}
+  }
+}
+async function doSignOut(){
+  try{await FB.auth.signOut();}catch(e){}
+  try{await FB.auth.signInAnonymously();}catch(e){}
+  renderAccount();renderProfileBar();
+  toast('Çıkış yapıldı');
+}
+
 const S={lettersText:DEFAULT_LETTERS_TEXT, dictText:'', validate:true, sound:true};
 let LETTERS=[], PTS={}, ALPHA=[], DICT=new Set(), BOTDICT=new Set(), BYLEN={};
 
@@ -53672,7 +53840,7 @@ async function loadProfile(){
   if(!ME.stats)ME.stats={gp:0,gw:0,ws:0,bws:0,ts:0,bg:0,tw:0,bw:'',bwp:0};
   if(!ME.id){ME.id=uid();saveProfile();}
 }
-function saveProfile(){stSet('ku_profil',JSON.stringify(ME),false);}
+function saveProfile(){stSet('ku_profil',JSON.stringify(ME),false);cloudSaveSoon();}
 
 /* ================================================================
    AVATARS
@@ -53684,6 +53852,7 @@ function avHTML(av,name,cls){
   if(!av){let h=0;for(const ch of nm)h=(h*31+ch.charCodeAt(0))>>>0;av={t:'mono',v:'',c:h%AV_COLORS.length};}
   const col=AV_COLORS[(av.c|0)%AV_COLORS.length];
   const sty='background:linear-gradient(160deg,'+col[0]+','+col[1]+')';
+  if(av.t==='img'&&av.v)return'<span class="avx '+(cls||'')+'" style="overflow:hidden;'+sty+'"><img src="'+esc(av.v)+'" style="width:100%;height:100%;object-fit:cover;border-radius:inherit" referrerpolicy="no-referrer"></span>';
   if(av.t==='emoji'&&av.v)return'<span class="avx '+(cls||'')+'" style="'+sty+'"><i>'+esc(av.v)+'</i></span>';
   if(av.t==='tile'){
     const L=av.v?trU(av.v):(Array.from(trU(nm))[0]||'?');
@@ -54367,7 +54536,7 @@ function applyRoom(o){
 }
 async function createRoom(name){
   const code=genCode();
-  const ex=await stGet('oda:'+code,true);
+  const ex=await roomGet(code);
   if(ex){createRoom(name);return;}
   useLetters(S.lettersText);rebuildDicts();
   G={mode:'online',code:code,hostId:ME.id,status:'lobby',
@@ -54375,7 +54544,7 @@ async function createRoom(name){
      board:new Array(225).fill(null),bag:[],star:pickStar(),turn:0,moveCount:0,
      passStreak:0,history:[],lastIdxs:[],seq:1,gid:uid(),over:false,mySeat:0,
      lettersText:S.lettersText,validate:S.validate};
-  const ok=await stSet('oda:'+code,serRoom(),true);
+  const ok=await roomSet(code,serRoom(),G.seq);
   if(!ok){toast('Oda kurulamadı — bağlantıyı kontrol et');G=null;return;}
   ME.lastRoom=code;saveProfile();
   go('scr-lobby');renderLobby();startPolling();
@@ -54383,7 +54552,7 @@ async function createRoom(name){
 async function joinRoom(code,name){
   code=String(code||'').trim().toUpperCase();
   if(code.length<4){toast('Oda kodu 5 karakter olmalı');return;}
-  const raw=await stGet('oda:'+code,true);
+  const raw=await roomGet(code);
   if(!raw){toast('Oda bulunamadı');return;}
   let o;try{o=JSON.parse(raw);}catch(e){toast('Oda verisi okunamadı');return;}
   const mine=o.players.find(p=>p.id===ME.id);
@@ -54392,7 +54561,7 @@ async function joinRoom(code,name){
     if(o.players.length>=4){toast('Oda dolu (en fazla 4 kişi)');return;}
     o.players.push({id:ME.id,name:name,score:0,rack:[],av:ME.av});
     o.seq=(o.seq||0)+1;o.ts=Date.now();
-    await stSet('oda:'+code,JSON.stringify(o),true);
+    await roomSet(code,JSON.stringify(o),o.seq);
   }
   applyRoom(o);
   ME.lastRoom=code;saveProfile();
@@ -54402,7 +54571,7 @@ async function joinRoom(code,name){
 }
 async function startOnlineGame(){
   if(!G||G.hostId!==ME.id)return;
-  const raw=await stGet('oda:'+G.code,true);
+  const raw=await roomGet(G.code);
   if(raw){try{const o=JSON.parse(raw);if((o.seq||0)>G.seq)applyRoom(o);}catch(e){}}
   if(G.players.length<2){toast('Başlamak için en az 2 oyuncu gerekli');return;}
   useLetters(G.lettersText);rebuildDicts();
@@ -54411,7 +54580,7 @@ async function startOnlineGame(){
   G.star=pickStar();G.status='playing';G.turn=0;G.moveCount=0;G.passStreak=0;
   G.history=[];G.lastIdxs=[];G.over=false;
   G.seq++;
-  await stSet('oda:'+G.code,serRoom(),true);
+  await roomSet(G.code,serRoom(),G.seq);
   setZoom(false);
   go('scr-game');renderAll();
   toast('Oyun başladı — ilk sıra: '+G.players[0].name);
@@ -54419,12 +54588,12 @@ async function startOnlineGame(){
 async function leaveRoom(){
   stopPolling();
   if(G&&G.code){
-    const raw=await stGet('oda:'+G.code,true);
+    const raw=await roomGet(G.code);
     if(raw){try{
       const o=JSON.parse(raw);
       if(o.status==='lobby'){
-        if(o.hostId===ME.id)await stDel('oda:'+G.code,true);
-        else{o.players=o.players.filter(p=>p.id!==ME.id);o.seq=(o.seq||0)+1;await stSet('oda:'+G.code,JSON.stringify(o),true);}
+        if(o.hostId===ME.id)await roomDel(G.code);
+        else{o.players=o.players.filter(p=>p.id!==ME.id);o.seq=(o.seq||0)+1;await roomSet(G.code,JSON.stringify(o),o.seq);}
       }
     }catch(e){}}
   }
@@ -54435,10 +54604,10 @@ async function leaveRoom(){
 function syncOnline(){
   if(!G||G.mode!=='online'||!G.code)return;
   G.seq++;
-  stSet('oda:'+G.code,serRoom(),true);
+  roomSet(G.code,serRoom(),G.seq);
 }
 async function preCommitCheck(){
-  const raw=await stGet('oda:'+G.code,true);
+  const raw=await roomGet(G.code);
   if(!raw)return true;
   let o;try{o=JSON.parse(raw);}catch(e){return true;}
   if((o.seq||0)!==G.seq){
@@ -54448,12 +54617,24 @@ async function preCommitCheck(){
   }
   return true;
 }
-function startPolling(){stopPolling();pollTimer=setInterval(pollRoom,3000);}
-function stopPolling(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}
-async function pollRoom(){
-  if(!G||G.mode!=='online'||!G.code)return;
-  const raw=await stGet('oda:'+G.code,true);
-  if(!raw)return;
+function startPolling(){
+  stopPolling();
+  if(netMode()==='fb'&&G&&G.code){
+    try{
+      FB.unsub=FB.db.collection('oda').doc(G.code).onSnapshot(function(snap){
+        if(snap&&snap.exists)applyRemote(snap.data().j);
+      },function(){});
+      return;
+    }catch(e){}
+  }
+  pollTimer=setInterval(pollRoom,3000);
+}
+function stopPolling(){
+  if(pollTimer){clearInterval(pollTimer);pollTimer=null;}
+  if(FB.unsub){try{FB.unsub();}catch(e){}FB.unsub=null;}
+}
+function applyRemote(raw){
+  if(!G||G.mode!=='online'||!raw)return;
   let o;try{o=JSON.parse(raw);}catch(e){return;}
   if((o.seq||0)>G.seq){
     const wasLobby=G.status==='lobby';
@@ -54465,6 +54646,11 @@ async function pollRoom(){
     if(G.status==='playing'&&G.turn===G.mySeat&&!wasMyTurn){toast('Sıra sende!');SND.turn();}
     if(G.status==='finished')showEndModal();
   }
+}
+async function pollRoom(){
+  if(!G||G.mode!=='online'||!G.code)return;
+  const raw=await roomGet(G.code);
+  if(raw)applyRemote(raw);
 }
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)pollRoom();});
 
@@ -54706,7 +54892,7 @@ async function loadTok(){
   if(!TOK.next){TOK.next=Date.now()+CHEST_TIERS[TOK.tier].d*1000;saveTok();}
   renderTok();
 }
-function saveTok(){stSet('ku_jeton',JSON.stringify(TOK),false);}
+function saveTok(){stSet('ku_jeton',JSON.stringify(TOK),false);cloudSaveSoon();}
 function renderTok(){
   $('tokCount').textContent='🪙 '+TOK.t;
   const b=$('btnChest');
@@ -54796,18 +54982,23 @@ function claimDaily(){
    PROFILE SCREEN
 ================================================================ */
 let PF={t:'mono',v:'',c:0};
-const AV_TABS=[['tile','Harf'],['emoji','Emoji'],['mono','Baş Harf']];
+function avTabsList(){
+  const t=[['tile','Harf'],['emoji','Emoji'],['mono','Baş Harf']];
+  if(isGoogleUser()&&FB.user.photoURL)t.unshift(['img','Foto']);
+  return t;
+}
 function openProfile(){
   PF=Object.assign({t:'mono',v:'',c:0},ME.av||{});
   $('pfName').value=ME.name||'';
-  renderAvTabs();renderAvGrid();renderAvColors();renderAvPrev();renderStats();
+  renderAccount();renderAvTabs();renderAvGrid();renderAvColors();renderAvPrev();renderStats();
   go('scr-profile');
 }
 function renderAvTabs(){
-  $('avTabs').innerHTML=AV_TABS.map(t=>'<button data-t="'+t[0]+'" class="'+(PF.t===t[0]?'on':'')+'">'+t[1]+'</button>').join('');
+  $('avTabs').innerHTML=avTabsList().map(t=>'<button data-t="'+t[0]+'" class="'+(PF.t===t[0]?'on':'')+'">'+t[1]+'</button>').join('');
   $('avTabs').querySelectorAll('button').forEach(b=>{
     b.onclick=()=>{
       PF.t=b.dataset.t;
+      if(PF.t==='img')PF.v=(FB.user&&FB.user.photoURL)||'';
       if(PF.t==='emoji'&&AV_EMOJIS.indexOf(PF.v)<0)PF.v=AV_EMOJIS[Math.floor(Math.random()*AV_EMOJIS.length)];
       if(PF.t==='mono')PF.v='';
       if(PF.t==='tile'&&ALPHA.indexOf(trU(PF.v))<0)PF.v='';
@@ -54817,6 +55008,7 @@ function renderAvTabs(){
 }
 function renderAvGrid(){
   const g=$('avGrid');
+  if(PF.t==='img'){g.innerHTML='<p class="note" style="grid-column:1/-1;text-align:center;margin:6px 0">Google profil fotoğrafın kullanılır.</p>';return;}
   if(PF.t==='mono'){g.innerHTML='<p class="note" style="grid-column:1/-1;text-align:center;margin:6px 0">Adının baş harfleri otomatik kullanılır.</p>';return;}
   if(PF.t==='tile'){
     const items=[''].concat(ALPHA);
@@ -54944,7 +55136,7 @@ $('mLocal').addEventListener('click',()=>buildSetup('local'));
 $('mBots').addEventListener('click',()=>buildSetup('bots'));
 $('mSolo').addEventListener('click',()=>startLocalGame('solo',{names:['Sen']}));
 $('mOnline').addEventListener('click',()=>{
-  if(!hasStore){toast('Bu ortamda çevrim içi oda desteklenmiyor');return;}
+  if(!netMode()){toast(FB.loading?'Bağlanıyor, birkaç saniye sonra tekrar dene':'Çevrim içi mod şu anda kullanılamıyor');return;}
   $('onName').value=ME.name||'';
   go('scr-online');
 });
@@ -55000,10 +55192,8 @@ async function init(){
   await loadProfile();
   await loadTok();
   await loadLocalSave();
-  if(!hasStore){
-    $('mOnline').classList.add('dis');
-    $('mOnline').querySelector('span').textContent='Bu ortamda kullanılamıyor';
-  }
+  updateOnlineCard();
+  loadFirebase();
   renderProfileBar();
   renderResume();
   renderDaily();
