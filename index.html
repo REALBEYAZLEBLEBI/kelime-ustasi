@@ -303,6 +303,32 @@ textarea{resize:vertical;font-size:13.5px;line-height:1.5;font-variant-ligatures
 .stgrid .st b{display:block;font-size:17px;color:var(--ink);}
 .stgrid .st span{font-size:11.5px;color:#64748b;font-weight:700;}
 .pchip .avx.sm{margin-right:1px;}
+/* simplified home */
+#homeHead{display:flex;align-items:center;gap:8px;margin:0 0 10px;}
+#profileBar{display:flex;align-items:center;gap:9px;background:rgba(255,255,255,.13);border:2px solid rgba(255,255,255,.22);border-radius:14px;padding:7px 12px;cursor:pointer;color:#fff;flex:1;min-width:0;}
+#profileBar b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#profileBar .chev{margin-left:auto;color:#cdd3ff;font-weight:800;font-size:18px;}
+#homeTok{display:flex;gap:6px;margin:0;}
+#homeTok .hk{padding:6px 10px;font-size:12px;}
+.playbig{display:flex;align-items:center;gap:14px;border-radius:18px;padding:15px 17px;margin:10px 0;cursor:pointer;color:#fff;background:linear-gradient(170deg,#34d399,#0b8f5c);box-shadow:0 6px 0 #086b45,0 12px 24px rgba(0,60,30,.4);transition:transform .1s;}
+.playbig:active{transform:translateY(3px);box-shadow:0 3px 0 #086b45;}
+.playbig .pbico{font-size:24px;width:46px;height:46px;border-radius:13px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+.playbig .pbtxt{min-width:0;}
+.playbig .pbtxt b{display:block;font-size:17px;}
+.playbig .pbtxt span{font-size:12.5px;opacity:.92;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.playbig.room{background:linear-gradient(170deg,#818cf8,#4740c6);box-shadow:0 6px 0 #322d8f,0 12px 24px rgba(20,20,90,.4);}
+.playbig.room:active{box-shadow:0 3px 0 #322d8f;}
+.mgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:8px 0 12px;}
+.mcell{background:var(--panel);border-radius:16px;padding:14px 8px 12px;display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer;box-shadow:0 8px 20px rgba(15,15,70,.25);transition:transform .1s;text-align:center;}
+.mcell:active{transform:scale(.96);}
+.mcell b{font-size:13.5px;}
+.mcell span{font-size:10.5px;color:var(--muted);font-weight:700;min-height:12px;}
+.mcell .mico{width:52px;height:52px;font-size:26px;border-radius:14px;}
+.mcell.dis{opacity:.55;}
+.pillrow{display:flex;gap:10px;}
+.pill{flex:1;border:2px solid rgba(255,255,255,.22);border-radius:13px;padding:12px;background:rgba(255,255,255,.13);color:#fff;font-weight:800;font-size:13.5px;cursor:pointer;}
+.pill:active{transform:scale(.97);}
+.dailymini{background:rgba(255,255,255,.1);border:2px solid rgba(255,255,255,.16);color:#cdd3ff;border-radius:12px;padding:8px 12px;font-size:12px;font-weight:800;text-align:center;margin:6px 0;}
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important;}}
 </style>
 </head>
@@ -313,19 +339,22 @@ textarea{resize:vertical;font-size:13.5px;line-height:1.5;font-variant-ligatures
 
   <!-- ============ HOME ============ -->
   <section class="screen on" id="scr-home">
-    <h2 class="scr">Türkçe Kelime Oyunu</h2>
-    <p class="sub">Bir oyun modu seç</p>
-    <div id="homeTok"></div>
-    <div class="card mode" id="profileBar"></div>
-    <div id="resumeWrap"></div>
+    <div id="homeHead">
+      <div id="profileBar"></div>
+      <div id="homeTok"></div>
+    </div>
     <div id="dailyWrap"></div>
-    <div class="card mode" id="mLocal"><div class="mico">📱</div><div class="mtxt"><b>Aynı Cihazda</b><span>2–4 oyuncu, telefonu elden ele geçirerek oynayın</span></div></div>
-    <div class="card mode" id="mBots"><div class="mico">🤖</div><div class="mtxt"><b>Bilgisayara Karşı</b><span>1–3 bilgisayar rakibine karşı oyna</span></div></div>
-    <div class="card mode" id="mOnline"><div class="mico">🌐</div><div class="mtxt"><b>Online Oda</b><span>Oda kur, kodu paylaş; 4 kişiye kadar internetten oynayın</span></div></div>
-    <div class="card mode" id="mSolo"><div class="mico">🎯</div><div class="mtxt"><b>Tek Kişilik Pratik</b><span>Kendi başına kelime kur, puanını gör</span></div></div>
-    <div class="row">
-      <div class="card mode" id="mSettings" style="margin-top:4px"><div class="mico">⚙️</div><div class="mtxt"><b>Ayarlar</b><span>Harfler, puanlar, sözlük</span></div></div>
-      <div class="card mode" id="mRules" style="margin-top:4px"><div class="mico">📖</div><div class="mtxt"><b>Kurallar</b><span>Nasıl oynanır?</span></div></div>
+    <div id="resumeWrap"></div>
+    <p class="sub" style="text-align:left;margin:12px 2px 0;font-size:11.5px;letter-spacing:1.5px;font-weight:800">OYUN MODLARI</p>
+    <div class="mgrid">
+      <div class="mcell" id="mLocal"><div class="mico">📱</div><b>Aynı Cihazda</b></div>
+      <div class="mcell" id="mBots"><div class="mico">🤖</div><b>Bilgisayara Karşı</b></div>
+      <div class="mcell" id="mOnline"><div class="mico">🌐</div><b>Online Oda</b><span></span></div>
+      <div class="mcell" id="mSolo"><div class="mico">🎯</div><b>Tek Kişilik</b></div>
+    </div>
+    <div class="pillrow">
+      <button class="pill" id="mSettings">⚙️ Ayarlar</button>
+      <button class="pill" id="mRules">📖 Kurallar</button>
     </div>
   </section>
 
@@ -53651,6 +53680,7 @@ async function loadFirebase(){
   }catch(e){FB.ready=false;}
   FB.loading=false;
   updateOnlineCard();
+  renderResume();
   return FB.ready;
 }
 function isGoogleUser(){return !!(FB.user&&!FB.user.isAnonymous);}
@@ -53658,10 +53688,11 @@ function netMode(){return hasStore?'store':(FB.ready?'fb':null);}
 function updateOnlineCard(){
   const el=$('mOnline');if(!el)return;
   const sp=el.querySelector('span');
-  if(hasStore){el.classList.remove('dis');sp.textContent='Oda kur, kodu paylaş; 4 kişiye kadar internetten oynayın';return;}
-  if(FB.ready){el.classList.remove('dis');sp.textContent='Anlık senkron · Oda kur, kodu paylaş (2–4 kişi)';return;}
+  if(!sp)return;
+  if(hasStore){el.classList.remove('dis');sp.textContent='Hazır';return;}
+  if(FB.ready){el.classList.remove('dis');sp.textContent='Anlık senkron ✓';return;}
   el.classList.add('dis');
-  sp.textContent=FB.loading?'Bağlanıyor…':'Bu ortamda kullanılamıyor';
+  sp.textContent=FB.loading?'Bağlanıyor…':'Kullanılamıyor';
 }
 /* ---- room transport: Firestore when hosted, shared storage in artifacts ---- */
 async function roomGet(code){
@@ -53756,6 +53787,7 @@ function renderAccount(){
 async function doSignIn(){
   if(!FB.ready)return;
   const prov=new firebase.auth.GoogleAuthProvider();
+  prov.setCustomParameters({prompt:'select_account'});
   try{await FB.auth.signInWithPopup(prov);}
   catch(e){
     const c=(e&&e.code)||'';
@@ -54820,12 +54852,12 @@ function renderResume(){
   const w=$('resumeWrap');
   let html='';
   if(LOCAL_SAVE&&LOCAL_SAVE.players){
-    const mn={local:'Aynı Cihazda',bots:'Bilgisayara Karşı',solo:'Tek Kişilik Pratik'}[LOCAL_SAVE.mode]||'Oyun';
+    const mn={local:'Aynı Cihazda',bots:'Bilgisayara Karşı',solo:'Tek Kişilik'}[LOCAL_SAVE.mode]||'Oyun';
     const sc=LOCAL_SAVE.players.map(p=>esc(p.name)+' '+(p.score||0)).join(' · ');
-    html+='<div class="card mode" id="mResumeLocal"><div class="mico">▶️</div><div class="mtxt"><b>Devam Et — '+mn+'</b><span>'+sc+'</span></div></div>';
+    html+='<div class="playbig" id="mResumeLocal"><div class="pbico">▶</div><div class="pbtxt"><b>Devam Et</b><span>'+mn+' · '+sc+'</span></div></div>';
   }
-  if(hasStore&&ME.lastRoom){
-    html+='<div class="card mode" id="mResume"><div class="mico">🔄</div><div class="mtxt"><b>Odaya Dön</b><span>Kod: '+esc(ME.lastRoom)+' — devam eden online oyununa geri dön</span></div></div>';
+  if(ME.lastRoom&&netMode()){
+    html+='<div class="playbig room" id="mResume"><div class="pbico">🌐</div><div class="pbtxt"><b>Odaya Dön</b><span>Kod: '+esc(ME.lastRoom)+'</span></div></div>';
   }
   w.innerHTML=html;
   const a=$('mResumeLocal');if(a)a.onclick=()=>applyLocal(LOCAL_SAVE);
@@ -54963,7 +54995,7 @@ function renderDaily(){
   const st=dailyState();
   if(st.claimed){
     const ns=(TOK.dStreak||0)+1,nr=DAILY_REW[(ns-1)%DAILY_REW.length];
-    w.innerHTML='<div class="card mode daily done"><div class="mico">🗓️</div><div class="mtxt"><b>Günlük Ödül Alındı ✓</b><span>Gün '+TOK.dStreak+' tamam — yarın Gün '+ns+': +'+nr+' jeton</span></div></div>';
+    w.innerHTML='<div class="dailymini">🗓️ Gün '+TOK.dStreak+' alındı ✓ · Yarın: +'+nr+' jeton</div>';
   }else{
     w.innerHTML='<div class="card mode daily ready" id="mDaily"><div class="mico">🎉</div><div class="mtxt"><b>Günlük Ödül — Gün '+st.streak+'</b><span>+'+st.rew+' jeton seni bekliyor'+(st.streak>1?' · Seri: '+st.streak+' gün 🔥':'')+'</span></div><div class="dgrab">AL</div></div>';
     $('mDaily').onclick=claimDaily;
@@ -55046,9 +55078,7 @@ function renderStats(){
 }
 function renderProfileBar(){
   const nm=ME.name||'Misafir';
-  const st=ME.stats||{};
-  const sub=st.gp?('🎮 '+st.gp+' oyun · 🏆 '+(st.gw||0)+' galibiyet'):'Avatarını seç, istatistiklerini takip et';
-  $('profileBar').innerHTML=avHTML(ME.av,nm,'')+'<div class="mtxt"><b>'+esc(nm)+'</b><span>'+sub+'</span></div><div style="margin-left:auto;color:#94a3b8;font-size:22px;font-weight:800">›</div>';
+  $('profileBar').innerHTML=avHTML(ME.av,nm,'')+'<b>'+esc(nm)+'</b><span class="chev">›</span>';
 }
 $('pfName').addEventListener('input',renderAvPrev);
 $('btnSaveProfile').addEventListener('click',()=>{
